@@ -2,12 +2,19 @@
 #include <LiquidCrystal_I2C.h>
 #include <SimpleDHT.h>
 
-// water level sensor
+int buttonPin = 9;
+int lastButtonState = HIGH;
+
+int menu = 1;
+
+// debounce
+unsigned long lastPressTime = 0;
+int debounceDelay = 200;
+
+// sensors
 int waterLevelPin = A0;
 int waterLevel;
 
-// turbidity sensor
-int turbidity;
 int turbidityPin = A1;
 int turbidityValue;
 
@@ -19,84 +26,100 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 void setup()
 {
   Serial.begin(9600);
+  pinMode(buttonPin, INPUT_PULLUP);
   lcd.init();
   lcd.backlight();
 }
 
 void loop()
 {
+  int currentState = digitalRead(buttonPin);
 
-  // water level sensor
+  if (lastButtonState == HIGH && currentState == LOW)
+  {
+    if (millis() - lastPressTime > debounceDelay)
+    {
+      menu++;
+      if (menu > 4)
+        menu = 1;
+
+      Serial.print("Menu: ");
+      Serial.println(menu);
+
+      lcd.clear();
+      lastPressTime = millis();
+    }
+  }
+
+  lastButtonState = currentState;
+
   waterLevel = analogRead(waterLevelPin);
-  // Serial.println(waterLevel);
 
-  // turbidity sensor
   turbidityValue = analogRead(turbidityPin);
   int turbidity = map(turbidityValue, 600, 750, 100, 0);
   turbidity = constrain(turbidity, 0, 100);
-  Serial.println(turbidityValue);
 
   byte temperature = 0;
   byte humidity = 0;
-  int err = SimpleDHTErrSuccess;
-  if ((err = dht11.read(&temperature, &humidity, NULL)) != SimpleDHTErrSuccess)
+
+  dht11.read(&temperature, &humidity, NULL);
+
+  if (menu == 1)
   {
-    lcd.setCursor(1, 0);
-    lcd.print("failed to read");
-    delay(1000);
-    lcd.clear();
-    return;
+    lcd.setCursor(0, 0);
+    lcd.print("Temp: ");
+    lcd.print((int)temperature);
+    lcd.print("C");
+
+    lcd.setCursor(0, 1);
+    lcd.print("Hum: ");
+    lcd.print((int)humidity);
+    lcd.print("%");
   }
 
-  lcd.setCursor(0, 0);
-  lcd.print((int)temperature);
-  lcd.setCursor(2, 0);
-  lcd.print("C ");
-  // lcd.setCursor(9, 0);
-  // lcd.print((int)humidity);
-  // lcd.setCursor(11, 0);
-  // lcd.print(" H ");
+  else if (menu == 2)
+  {
+    lcd.setCursor(0, 0);
+    lcd.print("Water Level");
 
-  lcd.setCursor(4, 0);
-  lcd.print("Water:");
-  lcd.setCursor(10, 0);
-  if (waterLevel < 200)
-  {
-    lcd.print("LOW");
-  }
-  else if (waterLevel < 500 && waterLevel > 200)
-  {
-    lcd.print("Medium");
-  }
-  else
-  {
-    lcd.print("High");
+    lcd.setCursor(0, 1);
+
+    if (waterLevel < 200)
+      lcd.print("LOW   ");
+    else if (waterLevel < 500)
+      lcd.print("MEDIUM");
+    else
+      lcd.print("HIGH  ");
   }
 
-  lcd.setCursor(0, 1);
-  lcd.print("Tur (");
-  lcd.print(turbidity);
-  lcd.print("): ");
+  else if (menu == 3)
+  {
+    lcd.setCursor(0, 0);
+    lcd.print("Turbidity: ");
+    lcd.print(turbidity);
 
-  lcd.setCursor(11, 1);
+    Serial.println(turbidity);
 
-  if (turbidityValue < 650)
-  {
-    lcd.print("NO");
-  }
-  else if (turbidity < 20)
-  {
-    lcd.print("CLEAR");
-  }
-  else if (turbidity < 60)
-  {
-    lcd.print("CLOUDY");
-  }
-  else
-  {
-    lcd.print("DIRTY");
+    lcd.setCursor(0, 1);
+
+    if (turbidityValue < 650)
+      lcd.print("NO WATER");
+    else if (turbidity < 20)
+      lcd.print("CLEAR   ");
+    else if (turbidity < 60)
+      lcd.print("CLOUDY  ");
+    else
+      lcd.print("DIRTY   ");
   }
 
-  delay(1000);
-  lcd.clear();
+  else if (menu == 4)
+  {
+    lcd.setCursor(0, 0);
+    lcd.print("Settings");
+
+    lcd.setCursor(0, 1);
+    lcd.print("Coming Soon...");
+  }
+
+  delay(200); // small refresh
 }
