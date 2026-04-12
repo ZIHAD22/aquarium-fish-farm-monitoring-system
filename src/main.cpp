@@ -2,6 +2,10 @@
 #include <LiquidCrystal_I2C.h>
 #include <SimpleDHT.h>
 
+// sound
+
+int soundPin = 2;
+
 // relay
 int airPumpRelayPin = 11;
 int airPumpState = HIGH;
@@ -12,7 +16,7 @@ int waterPumpState = HIGH;
 // menu
 int menuButtonPin = 8;
 int menuButtonState = HIGH;
-int menu = 5;
+int menu = 6;
 
 // setting
 int settingButtonPin = 9;
@@ -38,6 +42,10 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 void setup()
 {
   Serial.begin(9600);
+
+  // sound
+
+  pinMode(soundPin, OUTPUT);
 
   // relay
   pinMode(airPumpRelayPin, OUTPUT);
@@ -71,7 +79,7 @@ void loop()
     if (millis() - lastMenuPressTime > debounceDelay)
     {
       menu++;
-      if (menu > 5)
+      if (menu > 6)
       {
         menu = 1;
       }
@@ -90,10 +98,23 @@ void loop()
     if (millis() - lastSettingPressTime > debounceDelay)
     {
 
+      tone(soundPin, 1915);
+      delay(200);
+      noTone(soundPin);
       if (airPumpState == HIGH && menu == 5)
       {
         airPumpState = LOW;
         digitalWrite(airPumpRelayPin, LOW);
+      }
+      else if (waterPumpState == HIGH && menu == 6)
+      {
+        waterPumpState = LOW;
+        digitalWrite(waterPumpRelayPin, LOW);
+      }
+      else if (waterPumpState == LOW && menu == 6)
+      {
+        waterPumpState = HIGH;
+        digitalWrite(waterPumpRelayPin, HIGH);
       }
       else
       {
@@ -190,6 +211,50 @@ void loop()
     lcd.print("Air Pump: ");
     lcd.setCursor(10, 0);
     if (airPumpState == HIGH)
+    {
+      lcd.print("OFF");
+      lcd.setCursor(0, 1);
+      lcd.print("Click to on     ");
+    }
+    else
+    {
+      lcd.print("ON ");
+      lcd.setCursor(0, 1);
+      lcd.print("Click to go next");
+    }
+
+    lcd.setCursor(0, 1);
+  }
+  else if (menu == 6)
+  {
+    // air pump on/of setting
+
+    lcd.setCursor(0, 0);
+    lcd.print("Water Pump: ");
+    lcd.setCursor(12, 0);
+    if (waterPumpState == HIGH)
+    {
+      lcd.print("OFF");
+      lcd.setCursor(0, 1);
+      lcd.print("Click to on     ");
+    }
+    else
+    {
+      lcd.print("ON ");
+      lcd.setCursor(0, 1);
+      lcd.print("Click to go next");
+    }
+
+    lcd.setCursor(0, 1);
+  }
+  else if (menu == 6)
+  {
+    // air pump on/of setting
+
+    lcd.setCursor(0, 0);
+    lcd.print("Water Pump: ");
+    lcd.setCursor(12, 0);
+    if (waterPumpState == HIGH)
     {
       lcd.print("OFF");
       lcd.setCursor(0, 1);
