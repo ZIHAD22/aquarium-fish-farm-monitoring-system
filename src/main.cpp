@@ -33,23 +33,45 @@ int settingButtonSate = HIGH;
 // debounce
 unsigned long lastMenuPressTime = 0;
 unsigned long lastSettingPressTime = 0;
-int debounceDelay = 200;
+int debounceDelay = 190;
 
 // sensors
+
+// water level
 int waterLevelPin = A0;
+int waterLevelPowerPin = 3;
 int waterLevel;
+int waterLevelStatus = HIGH;
 
+// turbidity
 int turbidityPin = A1;
+int turbidityPowerPin = 4;
 int turbidityValue;
+int turbidity;
+int turbidityStatus = HIGH;
 
+// dht
 int pinDHT11 = 5;
+int dhtPowerPin = 6;
+byte temperature = 0;
+byte humidity = 0;
 SimpleDHT11 dht11(pinDHT11);
+int dhtStatus = HIGH;
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 void setup()
 {
   Serial.begin(9600);
+
+  // dht
+  pinMode(dhtPowerPin, OUTPUT);
+
+  // water Level
+  pinMode(waterLevelPowerPin, OUTPUT);
+
+  // turbidity
+  pinMode(turbidityPowerPin, OUTPUT);
 
   // sound
 
@@ -77,8 +99,26 @@ void loop()
   {
     digitalWrite(airPumpRelayPin, HIGH);
     digitalWrite(waterPumpRelayPin, HIGH);
+    delay(10);
   }
 
+  if (dhtStatus == HIGH)
+  {
+    digitalWrite(dhtPowerPin, HIGH);
+    delay(10);
+  }
+
+  if (waterLevelStatus == HIGH)
+  {
+    digitalWrite(waterLevelPowerPin, HIGH);
+    delay(10);
+  }
+
+  if (turbidityStatus == HIGH)
+  {
+    digitalWrite(turbidityPowerPin, HIGH);
+    delay(10);
+  }
   // menu
   int currentMenuState = digitalRead(menuButtonPin);
 
@@ -107,9 +147,24 @@ void loop()
     {
 
       tone(soundPin, 1915);
-      delay(200);
+      delay(100);
       noTone(soundPin);
-      if (airPumpState == HIGH && menu == 5)
+      if (menu == 1)
+      {
+        dhtStatus = dhtStatus == HIGH ? LOW : HIGH;
+        digitalWrite(dhtPowerPin, dhtStatus);
+      }
+      else if (menu == 2)
+      {
+        waterLevelStatus = waterLevelStatus == HIGH ? LOW : HIGH;
+        digitalWrite(waterLevelPowerPin, waterLevelStatus);
+      }
+      else if (menu == 3)
+      {
+        turbidityStatus = turbidityStatus == HIGH ? LOW : HIGH;
+        digitalWrite(turbidityPowerPin, turbidityStatus);
+      }
+      else if (airPumpState == HIGH && menu == 5)
       {
         airPumpState = LOW;
         digitalWrite(airPumpRelayPin, LOW);
@@ -154,48 +209,67 @@ void loop()
   settingButtonSate = currentSettingState;
 
   // water level
-  waterLevel = analogRead(waterLevelPin);
+  if (waterLevelStatus == HIGH)
+    waterLevel = analogRead(waterLevelPin);
 
   // turbidity
-  turbidityValue = analogRead(turbidityPin);
-  int turbidity = map(turbidityValue, 600, 750, 100, 0);
-  turbidity = constrain(turbidity, 0, 100);
+  if (turbidityStatus == HIGH)
+  {
+    turbidityValue = analogRead(turbidityPin);
+    turbidity = map(turbidityValue, 600, 750, 100, 0);
+    turbidity = constrain(turbidity, 0, 100);
+  }
 
   // dht11
-  byte temperature = 0;
-  byte humidity = 0;
-  dht11.read(&temperature, &humidity, NULL);
+
+  if (dhtStatus == HIGH)
+  {
+    dht11.read(&temperature, &humidity, NULL);
+  }
 
   if (menu == 1)
   {
     // dh11
-    lcd.setCursor(0, 0);
-    lcd.print("Temp: ");
-    lcd.print((int)temperature);
-    lcd.print("C");
+    if (dhtStatus == HIGH)
+    {
+      lcd.setCursor(0, 0);
+      lcd.print("Temp: ");
+      lcd.print((int)temperature);
+      lcd.print("C");
 
-    lcd.setCursor(0, 1);
-    lcd.print("Hum: ");
-    lcd.print((int)humidity);
-    lcd.print("%");
+      lcd.setCursor(0, 1);
+      lcd.print("Hum: ");
+      lcd.print((int)humidity);
+      lcd.print("%");
+    }
+    else
+    {
+      lcd.setCursor(0, 0);
+      lcd.print("Temp & Hum: ");
+      lcd.setCursor(0, 1);
+      lcd.print("OFF     ");
+    }
   }
 
   else if (menu == 2)
   {
     // water level
     lcd.setCursor(0, 0);
-    lcd.print("Water Level");
+    lcd.print("Water Level: ");
 
     lcd.setCursor(0, 1);
-
-    if (waterLevel < 200)
+    if (waterLevelStatus == LOW)
+    {
+      lcd.print("OFF   ");
+    }
+    else if (waterLevel < 200 && waterLevelStatus == HIGH)
     {
       lcd.print("LOW   ");
     }
-    else if (waterLevel < 500)
+    else if (waterLevel < 500 && waterLevelStatus == HIGH)
       lcd.print("MEDIUM");
 
-    else
+    else if (waterLevel > 500 && waterLevelStatus == HIGH)
       lcd.print("HIGH  ");
   }
 
@@ -210,7 +284,11 @@ void loop()
 
     lcd.setCursor(0, 1);
 
-    if (turbidityValue < 650)
+    if (turbidityStatus == LOW)
+    {
+      lcd.print("OFF     ");
+    }
+    else if (turbidityValue < 650)
       lcd.print("NO WATER");
     else if (turbidity < 20)
       lcd.print("CLEAR   ");
@@ -278,7 +356,7 @@ void loop()
 
     lcd.setCursor(0, 0);
     lcd.print("Auto Mode: ");
-    lcd.setCursor(12, 0);
+    lcd.setCursor(11, 0);
     if (autoMode == false)
     {
       lcd.print("OFF");
@@ -294,8 +372,7 @@ void loop()
 
     lcd.setCursor(0, 1);
   }
-
-    // global reading
+  // global reading
   if (autoMode)
   {
     if (waterLevel < 200)
@@ -310,9 +387,9 @@ void loop()
       if (warningCount != 0 && warningState == true)
       {
         tone(soundPin, 1915);
-        delay(200);
+        delay(100);
         noTone(soundPin);
-        delay(200);
+        delay(100);
         warningCount--;
       }
 
