@@ -2,9 +2,17 @@
 #include <LiquidCrystal_I2C.h>
 #include <SimpleDHT.h>
 
+// auto Mode
+
+boolean autoMode = false;
+
 // sound
 
 int soundPin = 2;
+
+// water level alert
+int warningCount = NULL;
+int warningState = false;
 
 // relay
 int airPumpRelayPin = 11;
@@ -79,7 +87,7 @@ void loop()
     if (millis() - lastMenuPressTime > debounceDelay)
     {
       menu++;
-      if (menu > 6)
+      if (menu > 7)
       {
         menu = 1;
       }
@@ -113,6 +121,20 @@ void loop()
       }
       else if (waterPumpState == LOW && menu == 6)
       {
+        waterPumpState = HIGH;
+        digitalWrite(waterPumpRelayPin, HIGH);
+      }
+      else if (autoMode == false && menu == 7)
+      {
+        autoMode = true;
+      }
+      else if (autoMode == true && menu == 7)
+      {
+        autoMode = false;
+        airPumpState = HIGH;
+        digitalWrite(airPumpRelayPin, HIGH);
+        delay(100);
+
         waterPumpState = HIGH;
         digitalWrite(waterPumpRelayPin, HIGH);
       }
@@ -167,9 +189,12 @@ void loop()
     lcd.setCursor(0, 1);
 
     if (waterLevel < 200)
+    {
       lcd.print("LOW   ");
+    }
     else if (waterLevel < 500)
       lcd.print("MEDIUM");
+
     else
       lcd.print("HIGH  ");
   }
@@ -247,14 +272,14 @@ void loop()
 
     lcd.setCursor(0, 1);
   }
-  else if (menu == 6)
+  else if (menu == 7)
   {
-    // air pump on/of setting
+    // auto mode
 
     lcd.setCursor(0, 0);
-    lcd.print("Water Pump: ");
+    lcd.print("Auto Mode: ");
     lcd.setCursor(12, 0);
-    if (waterPumpState == HIGH)
+    if (autoMode == false)
     {
       lcd.print("OFF");
       lcd.setCursor(0, 1);
@@ -268,6 +293,58 @@ void loop()
     }
 
     lcd.setCursor(0, 1);
+  }
+
+    // global reading
+  if (autoMode)
+  {
+    if (waterLevel < 200)
+    {
+
+      if (!warningState)
+      {
+        warningState = true;
+        warningCount = 5;
+      }
+
+      if (warningCount != 0 && warningState == true)
+      {
+        tone(soundPin, 1915);
+        delay(200);
+        noTone(soundPin);
+        delay(200);
+        warningCount--;
+      }
+
+      if (warningState && warningCount == 0 && waterPumpState == HIGH)
+      {
+        if (airPumpState == LOW && airPumpState == LOW)
+        {
+          digitalWrite(airPumpRelayPin, HIGH);
+          airPumpState = HIGH;
+        }
+        digitalWrite(waterPumpRelayPin, LOW);
+        waterPumpState = LOW;
+      }
+    }
+    else
+    {
+
+      if (waterPumpState == LOW)
+      {
+        digitalWrite(waterPumpRelayPin, HIGH);
+        waterPumpState = HIGH;
+      }
+
+      if (airPumpState == HIGH)
+      {
+        digitalWrite(airPumpRelayPin, LOW);
+        airPumpState = LOW;
+      }
+
+      warningState = false;
+      warningCount = NULL;
+    }
   }
 
   delay(200);
