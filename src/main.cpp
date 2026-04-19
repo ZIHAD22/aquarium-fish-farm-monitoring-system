@@ -11,8 +11,9 @@ boolean autoMode = false;
 int soundPin = 2;
 
 // water level alert
-int warningCount = NULL;
+int warningCount = 0;
 int warningState = false;
+int warningSensor = 0; // 0 -> no warning 1 -> warning from temp , 2 -> water level , 3 -> turbidity
 
 // relay
 int airPumpRelayPin = 11;
@@ -33,7 +34,7 @@ int settingButtonSate = HIGH;
 // debounce
 unsigned long lastMenuPressTime = 0;
 unsigned long lastSettingPressTime = 0;
-int debounceDelay = 190;
+unsigned long debounceDelay = 190;
 
 // sensors
 
@@ -158,26 +159,74 @@ void loop()
       {
         waterLevelStatus = waterLevelStatus == HIGH ? LOW : HIGH;
         digitalWrite(waterLevelPowerPin, waterLevelStatus);
+
+        if (waterLevelStatus == LOW && warningSensor == 2)
+        {
+          if (airPumpState == LOW)
+          {
+            airPumpState = HIGH;
+            digitalWrite(airPumpRelayPin, airPumpState);
+          }
+
+          if (waterPumpState == LOW)
+          {
+            waterPumpState = HIGH;
+            digitalWrite(waterPumpRelayPin, waterPumpState);
+          }
+
+          warningCount = 0;
+          warningState = false;
+          warningSensor = 0;
+        }
       }
       else if (menu == 3)
       {
         turbidityStatus = turbidityStatus == HIGH ? LOW : HIGH;
         digitalWrite(turbidityPowerPin, turbidityStatus);
+
+        if (turbidityStatus == LOW && warningSensor == 3)
+
+        {
+          if (airPumpState == LOW)
+          {
+            airPumpState = HIGH;
+            digitalWrite(airPumpRelayPin, airPumpState);
+          }
+
+          if (waterPumpState == LOW)
+          {
+            waterPumpState = HIGH;
+            digitalWrite(waterPumpRelayPin, waterPumpState);
+          }
+
+          warningCount = 0;
+          warningState = false;
+          warningSensor = 0;
+        }
       }
       else if (airPumpState == HIGH && menu == 5)
       {
-        airPumpState = LOW;
-        digitalWrite(airPumpRelayPin, LOW);
+        if (!autoMode)
+        {
+          airPumpState = LOW;
+          digitalWrite(airPumpRelayPin, LOW);
+        }
       }
       else if (waterPumpState == HIGH && menu == 6)
       {
-        waterPumpState = LOW;
-        digitalWrite(waterPumpRelayPin, LOW);
+        if (autoMode != true)
+        {
+          waterPumpState = LOW;
+          digitalWrite(waterPumpRelayPin, LOW);
+        }
       }
       else if (waterPumpState == LOW && menu == 6)
       {
-        waterPumpState = HIGH;
-        digitalWrite(waterPumpRelayPin, HIGH);
+        if (autoMode != true)
+        {
+          waterPumpState = HIGH;
+          digitalWrite(waterPumpRelayPin, HIGH);
+        }
       }
       else if (autoMode == false && menu == 7)
       {
@@ -195,8 +244,11 @@ void loop()
       }
       else
       {
-        airPumpState = HIGH;
-        digitalWrite(airPumpRelayPin, HIGH);
+        if (autoMode != true)
+        {
+          airPumpState = HIGH;
+          digitalWrite(airPumpRelayPin, HIGH);
+        }
       }
 
       Serial.print("button Click");
@@ -280,8 +332,6 @@ void loop()
     lcd.print("Turbidity: ");
     lcd.print(turbidity);
 
-    Serial.println(turbidity);
-
     lcd.setCursor(0, 1);
 
     if (turbidityStatus == LOW)
@@ -290,9 +340,9 @@ void loop()
     }
     else if (turbidityValue < 650)
       lcd.print("NO WATER");
-    else if (turbidity < 20)
+    else if (turbidity <= 20)
       lcd.print("CLEAR   ");
-    else if (turbidity < 60)
+    else if (turbidity <= 60)
       lcd.print("CLOUDY  ");
     else
       lcd.print("DIRTY   ");
@@ -313,7 +363,13 @@ void loop()
     lcd.setCursor(0, 0);
     lcd.print("Air Pump: ");
     lcd.setCursor(10, 0);
-    if (airPumpState == HIGH)
+    if (autoMode)
+    {
+      lcd.print("   ");
+      lcd.setCursor(0, 1);
+      lcd.print("Setting Disable ");
+    }
+    else if (airPumpState == HIGH)
     {
       lcd.print("OFF");
       lcd.setCursor(0, 1);
@@ -335,7 +391,13 @@ void loop()
     lcd.setCursor(0, 0);
     lcd.print("Water Pump: ");
     lcd.setCursor(12, 0);
-    if (waterPumpState == HIGH)
+    if (autoMode)
+    {
+      lcd.print("   ");
+      lcd.setCursor(0, 1);
+      lcd.print("Setting Disable ");
+    }
+    else if (waterPumpState == HIGH)
     {
       lcd.print("OFF");
       lcd.setCursor(0, 1);
@@ -375,52 +437,139 @@ void loop()
   // global reading
   if (autoMode)
   {
-    if (waterLevel < 200)
-    {
 
+    // water level
+    if (waterLevelStatus == HIGH && (warningSensor == 0 || warningSensor == 2))
+    {
+      delay(100);
+      if (waterLevel < 200)
+      {
+
+        if (!warningState)
+        {
+          warningState = true;
+          warningCount = 5;
+          warningSensor = 2;
+        }
+
+        if (warningCount != 0 && warningState == true)
+        {
+          tone(soundPin, 1915);
+          delay(100);
+          noTone(soundPin);
+          delay(100);
+          warningCount--;
+        }
+
+        if (warningCount == 0 && waterPumpState == HIGH)
+        {
+          if (airPumpState == LOW)
+          {
+            digitalWrite(airPumpRelayPin, HIGH);
+            airPumpState = HIGH;
+          }
+          digitalWrite(waterPumpRelayPin, LOW);
+          waterPumpState = LOW;
+        }
+      }
+      else
+      {
+
+        if (waterPumpState == LOW)
+        {
+          digitalWrite(waterPumpRelayPin, HIGH);
+          waterPumpState = HIGH;
+        }
+
+        if (airPumpState == HIGH)
+        {
+          digitalWrite(airPumpRelayPin, LOW);
+          airPumpState = LOW;
+        }
+
+        warningState = false;
+        warningCount = 0;
+        warningSensor = 0;
+      }
+    }
+
+    // turbidity
+    if (turbidityStatus == HIGH && (warningSensor == 0 || warningSensor == 3) && turbidity != 100)
+    {
+      if (turbidityValue > 20)
+
+      {
+
+        if (!warningState)
+        {
+          warningState = true;
+          warningCount = 5;
+          warningSensor = 3;
+        }
+
+        if (warningCount != 0 && warningState == true)
+        {
+          tone(soundPin, 1915);
+          delay(100);
+          noTone(soundPin);
+          delay(100);
+          warningCount--;
+        }
+
+        if (warningCount == 0 && waterPumpState == HIGH)
+        {
+
+          if (airPumpState == LOW)
+          {
+            airPumpState = HIGH;
+            digitalWrite(airPumpRelayPin, airPumpState);
+          }
+
+          waterPumpState = LOW;
+          digitalWrite(waterPumpRelayPin, waterPumpState);
+        }
+      }
+      else
+      {
+        if (airPumpState == HIGH)
+        {
+          airPumpState = LOW;
+          digitalWrite(airPumpRelayPin, airPumpState);
+        }
+
+        waterPumpState = HIGH;
+        digitalWrite(waterPumpRelayPin, waterPumpState);
+
+        warningState = false;
+        warningCount = 0;
+        warningSensor = 0;
+      }
+    }
+  }
+
+  // dht safety
+  if (dhtStatus == HIGH && (warningSensor == 0 || warningSensor == 1))
+  {
+    if ((int)temperature > 35)
+    {
+      autoMode = false;
       if (!warningState)
       {
         warningState = true;
-        warningCount = 5;
+        warningCount = 0;
+        warningSensor = 1;
       }
 
-      if (warningCount != 0 && warningState == true)
-      {
-        tone(soundPin, 1915);
-        delay(100);
-        noTone(soundPin);
-        delay(100);
-        warningCount--;
-      }
-
-      if (warningState && warningCount == 0 && waterPumpState == HIGH)
-      {
-        if (airPumpState == LOW && airPumpState == LOW)
-        {
-          digitalWrite(airPumpRelayPin, HIGH);
-          airPumpState = HIGH;
-        }
-        digitalWrite(waterPumpRelayPin, LOW);
-        waterPumpState = LOW;
-      }
+      tone(soundPin, 1915);
+      delay(100);
+      noTone(soundPin);
+      delay(100);
     }
     else
     {
-
-      if (waterPumpState == LOW)
-      {
-        digitalWrite(waterPumpRelayPin, HIGH);
-        waterPumpState = HIGH;
-      }
-
-      if (airPumpState == HIGH)
-      {
-        digitalWrite(airPumpRelayPin, LOW);
-        airPumpState = LOW;
-      }
-
       warningState = false;
-      warningCount = NULL;
+      warningCount = 0;
+      warningSensor = 0;
     }
   }
 
