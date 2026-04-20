@@ -11,6 +11,7 @@ boolean autoMode = false;
 int soundPin = 2;
 
 // water level alert
+int warningLastActiveTime = 0;
 int warningCount = 0;
 int warningState = false;
 int warningSensor = 0; // 0 -> no warning 1 -> warning from temp , 2 -> water level , 3 -> turbidity
@@ -25,7 +26,7 @@ int waterPumpState = HIGH;
 // menu
 int menuButtonPin = 8;
 int menuButtonState = HIGH;
-int menu = 6;
+int menu = 3;
 
 // setting
 int settingButtonPin = 9;
@@ -43,12 +44,13 @@ int waterLevelPin = A0;
 int waterLevelPowerPin = 3;
 int waterLevel;
 int waterLevelStatus = HIGH;
+int percent;
 
 // turbidity
 int turbidityPin = A1;
 int turbidityPowerPin = 4;
 int turbidityValue;
-int turbidity;
+
 int turbidityStatus = HIGH;
 
 // dht
@@ -261,15 +263,38 @@ void loop()
   settingButtonSate = currentSettingState;
 
   // water level
+
   if (waterLevelStatus == HIGH)
+  {
     waterLevel = analogRead(waterLevelPin);
+    percent = map(waterLevel, 0, 500, 0, 2);
+    percent = constrain(percent, 0, 2);
+
+    if (waterLevel < 430)
+    {
+      percent = 0;
+    }
+    else if (waterLevel < 500)
+    {
+      percent = 1;
+    }
+    else
+    {
+      percent = 2;
+    }
+  }
 
   // turbidity
+  int turbidity = 0;
   if (turbidityStatus == HIGH)
   {
     turbidityValue = analogRead(turbidityPin);
     turbidity = map(turbidityValue, 600, 750, 100, 0);
     turbidity = constrain(turbidity, 0, 100);
+    // Serial.print("R -");
+    // Serial.println(turbidityValue);
+    // Serial.print("P -");
+    // Serial.println(turbidity);
   }
 
   // dht11
@@ -314,14 +339,14 @@ void loop()
     {
       lcd.print("OFF   ");
     }
-    else if (waterLevel < 200 && waterLevelStatus == HIGH)
+    else if (percent == 0 && waterLevelStatus == HIGH)
     {
       lcd.print("LOW   ");
     }
-    else if (waterLevel < 500 && waterLevelStatus == HIGH)
+    else if (percent == 1 && waterLevelStatus == HIGH)
       lcd.print("MEDIUM");
 
-    else if (waterLevel > 500 && waterLevelStatus == HIGH)
+    else if (percent == 2 && waterLevelStatus == HIGH)
       lcd.print("HIGH  ");
   }
 
@@ -330,7 +355,19 @@ void loop()
     // turbidity
     lcd.setCursor(0, 0);
     lcd.print("Turbidity: ");
-    lcd.print(turbidity);
+    if (turbidity == 100)
+    {
+      lcd.print(turbidity);
+    }
+    else
+    {
+      lcd.print(turbidity);
+      lcd.setCursor(13, 0);
+      lcd.print(" ");
+    }
+
+    Serial.print("P -");
+    Serial.println(turbidity);
 
     lcd.setCursor(0, 1);
 
@@ -340,9 +377,9 @@ void loop()
     }
     else if (turbidityValue < 650)
       lcd.print("NO WATER");
-    else if (turbidity <= 20)
-      lcd.print("CLEAR   ");
     else if (turbidity <= 60)
+      lcd.print("CLEAR   ");
+    else if (turbidity <= 80)
       lcd.print("CLOUDY  ");
     else
       lcd.print("DIRTY   ");
@@ -442,7 +479,7 @@ void loop()
     if (waterLevelStatus == HIGH && (warningSensor == 0 || warningSensor == 2))
     {
       delay(100);
-      if (waterLevel < 200)
+      if (percent < 1)
       {
 
         if (!warningState)
@@ -470,80 +507,60 @@ void loop()
           }
           digitalWrite(waterPumpRelayPin, LOW);
           waterPumpState = LOW;
+
+          warningLastActiveTime = millis();
         }
       }
       else
       {
 
-        if (waterPumpState == LOW)
-        {
-          digitalWrite(waterPumpRelayPin, HIGH);
-          waterPumpState = HIGH;
-        }
-
-        if (airPumpState == HIGH)
-        {
-          digitalWrite(airPumpRelayPin, LOW);
-          airPumpState = LOW;
-        }
-
-        warningState = false;
-        warningCount = 0;
-        warningSensor = 0;
-      }
-    }
-
-    // turbidity
-    if (turbidityStatus == HIGH && (warningSensor == 0 || warningSensor == 3) && turbidity != 100)
-    {
-      if (turbidityValue > 20)
-
-      {
-
-        if (!warningState)
-        {
-          warningState = true;
-          warningCount = 5;
-          warningSensor = 3;
-        }
-
-        if (warningCount != 0 && warningState == true)
-        {
-          tone(soundPin, 1915);
-          delay(100);
-          noTone(soundPin);
-          delay(100);
-          warningCount--;
-        }
-
-        if (warningCount == 0 && waterPumpState == HIGH)
+        if (millis() - warningLastActiveTime >= 12000)
         {
 
-          if (airPumpState == LOW)
+          if (waterPumpState == LOW)
           {
-            airPumpState = HIGH;
-            digitalWrite(airPumpRelayPin, airPumpState);
+            digitalWrite(waterPumpRelayPin, HIGH);
+            waterPumpState = HIGH;
           }
 
-          waterPumpState = LOW;
-          digitalWrite(waterPumpRelayPin, waterPumpState);
+          if (airPumpState == HIGH)
+          {
+            digitalWrite(airPumpRelayPin, LOW);
+            airPumpState = LOW;
+          }
+
+          warningState = false;
+          warningCount = 0;
+          warningSensor = 0;
         }
       }
-      else
+    }
+  }
+
+  // turbidity
+  if (turbidityStatus == HIGH && (warningSensor == 0 || warningSensor == 3) && turbidity != 100)
+  {
+    if (turbidity > 60)
+
+    {
+      autoMode = false;
+      if (!warningState)
       {
-        if (airPumpState == HIGH)
-        {
-          airPumpState = LOW;
-          digitalWrite(airPumpRelayPin, airPumpState);
-        }
-
-        waterPumpState = HIGH;
-        digitalWrite(waterPumpRelayPin, waterPumpState);
-
-        warningState = false;
+        warningState = true;
         warningCount = 0;
-        warningSensor = 0;
+        warningSensor = 3;
       }
+
+      tone(soundPin, 1915);
+      delay(100);
+      noTone(soundPin);
+      delay(100);
+    }
+    else
+    {
+      warningState = false;
+      warningCount = 0;
+      warningSensor = 0;
     }
   }
 
